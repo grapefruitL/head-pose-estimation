@@ -31,14 +31,12 @@ parser.add_argument("--cam", type=int, default=None,
                     help="The webcam index.")
 args = parser.parse_args()
 
-
 def get_face(detector, img_queue, box_queue):
     """Get face from image queue. This function is used for multiprocessing"""
     while True:
         image = img_queue.get()
         box = detector.extract_cnn_facebox(image)
         box_queue.put(box)
-
 
 def main():
     """MAIN"""
@@ -55,7 +53,6 @@ def main():
 
     # Introduce mark_detector to detect landmarks.
     mark_detector = MarkDetector()
-
     # Setup process and queues for multiprocessing.
     img_queue = Queue()
     box_queue = Queue()
@@ -63,7 +60,6 @@ def main():
     box_process = Process(target=get_face, args=(
         mark_detector, img_queue, box_queue,))
     box_process.start()
-
     # Introduce pose estimator to solve pose. Get one frame to setup the
     # estimator according to the image size.
     height, width = sample_frame.shape[:2]
@@ -78,9 +74,18 @@ def main():
 
     tm = cv2.TickMeter()
 
+    
+    sz = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    writer = cv2.VideoWriter('output.mp4', cv2.VideoWriter_fourcc('m','p','4','v'), fps, sz)
+    fps_cnt = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+    index = 0
+
     while True:
         # Read frame, crop it, flip it, suits your needs.
         frame_got, frame = cap.read()
+        index += 1
+        print('{} / {}'.format(index, fps_cnt), end='\r')
         if frame_got is False:
             break
 
@@ -110,7 +115,7 @@ def main():
             face_img = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
 
             tm.start()
-            marks = mark_detector.detect_marks(face_img)
+            marks = mark_detector.detect_marks([face_img])
             tm.stop()
 
             # Convert the marks locations from local CNN to global image.
@@ -119,7 +124,8 @@ def main():
             marks[:, 1] += facebox[1]
 
             # Uncomment following line to show raw marks.
-            # mark_detector.draw_marks(frame, marks, color=(0, 255, 0))
+            # mark_detector.draw_marks(
+            #     frame, marks, color=(0, 255, 0))
 
             # Uncomment following line to show facebox.
             # mark_detector.draw_box(frame, [facebox])
@@ -144,16 +150,18 @@ def main():
                 frame, steady_pose[0], steady_pose[1], color=(128, 255, 128))
 
             # Uncomment following line to draw head axes on frame.
-            # pose_estimator.draw_axes(frame, steady_pose[0], steady_pose[1])
+            # pose_estimator.draw_axes(frame, stabile_pose[0], stabile_pose[1])
 
         # Show preview.
-        cv2.imshow("Preview", frame)
-        if cv2.waitKey(10) == 27:
-            break
+        writer.write(frame)
+        # cv2.imshow("Preview", frame)
+        # if cv2.waitKey(10) == 27:
+        #     break
 
     # Clean up the multiprocessing process.
     box_process.terminate()
     box_process.join()
+    writer.release()
 
 
 if __name__ == '__main__':
